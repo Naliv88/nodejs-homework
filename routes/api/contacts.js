@@ -64,8 +64,9 @@ router.delete("/:contactId", async (req, res, next) => {
   try {
     const data = await removeContact(contactId);
     if (data) {
-      return res.status(200).json("delete");
+      return res.status(200).json("contact deleted");
     }
+    res.status(404).json({ message: "Not found" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to delete contact" });
@@ -82,7 +83,7 @@ router.put("/:contactId", async (req, res, next) => {
   });
 
   if (error) {
-    return res.status(400).json({ message: error.details[0].message });
+    return res.status(400).json({ message: "missing fields" });
   }
 
   try {
