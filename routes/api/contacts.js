@@ -1,4 +1,5 @@
 const express = require("express");
+
 const { schema } = require("../middlewares/contactMiddlewares");
 const {
   listContacts,
@@ -6,6 +7,7 @@ const {
   removeContact,
   addContact,
   updateContact,
+  updateStatusContact,
 } = require("../../models/contacts");
 
 const router = express.Router();
@@ -33,7 +35,7 @@ router.get("/:contactId", async (req, res) => {
 
     res.status(404).json({ message: "Not found" });
   } catch (error) {
-   console.error(error);
+    console.error(error);
     res.status(500).json({ message: "Failed to retrieve contact" });
   }
 });
@@ -83,6 +85,7 @@ router.put("/:contactId", async (req, res, next) => {
   });
 
   if (error) {
+    console.log(error);
     return res.status(400).json({ message: "missing fields" });
   }
 
@@ -91,6 +94,27 @@ router.put("/:contactId", async (req, res, next) => {
     if (data) {
       return res.status(200).json(data);
     }
+    res.status(404).json({ message: "Not found" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to update contact" });
+  }
+});
+
+// Update a favorite in contact by ID
+router.patch("/:contactId/favorite", async (req, res, next) => {
+  const { body } = req;
+  const { contactId } = req.params;
+  if (!body) {
+    return res.status(400).json({ message: "missing field favorite" });
+  }
+  try {
+    const data = await updateStatusContact(contactId, body);
+
+    if (data) {
+      return res.status(200).json(data);
+    }
+
     res.status(404).json({ message: "Not found" });
   } catch (error) {
     console.error(error);
