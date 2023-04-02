@@ -1,9 +1,13 @@
-const { User } = require("../models/userModel");
-const { UserSchema } = require("../routes/middlewares/userJoi");
-
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const { Conflict, Unauthorized } = require("http-errors");
+const path = require("path");
+const fs = require("fs/promises");
+const gravatar = require("gravatar");
+
+const { resizeAvatar } = require("../service/resizeAvatar");
+const { User } = require("../models/userModel");
+const { UserSchema } = require("../routes/middlewares/userJoi");
 
 const registerUser = async (req, res, next) => {
   const { email, password } = req.body;
@@ -23,6 +27,7 @@ const registerUser = async (req, res, next) => {
     const savedUser = await User.create({
       email,
       password: hashedPassword,
+      avatarURL: gravatar.url(email, { d: "identicon" }),
     });
 
     res.status(201).json({
@@ -100,9 +105,30 @@ const currentUser = async (req, res, next) => {
   });
 };
 
+const updateAvatar = async (req, res) => {
+  const { path: tmpPath, originalname } = req.file;
+  const { id } = req.user;
+  const newImageName = `${id}_${originalname}`;
+  const newPath = path.join("public", "avatars", newImageName);
+
+  await resizeAvatar(tmpPath);
+
+  try {
+    await fs.rename(tmpPath, newPath);
+    await User.findByIdAndUpdate(id, { avatarURL: newPath });
+    res.status(200).json({
+      avatarURL: newPath,
+    });
+  } catch (error) {
+    await fs.unlink(tmpPath);
+    throw Error(error);
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   logoutUser,
   currentUser,
+  updateAvatar,
 };
