@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-const { Conflict, Unauthorized } = require("http-errors");
+const { Conflict, Unauthorized, NotFound } = require("http-errors");
 const path = require("path");
 const fs = require("fs/promises");
 const gravatar = require("gravatar");
@@ -8,10 +8,12 @@ const gravatar = require("gravatar");
 const { resizeAvatar } = require("../service/resizeAvatar");
 const { User } = require("../models/userModel");
 const { UserSchema } = require("../routes/middlewares/userJoi");
+const { v4 } = require("uuid");
+const { sendMail } = require("../service/sendMail");
 
 const registerUser = async (req, res, next) => {
   const { email, password } = req.body;
-
+  const verificationToken = v4();
   const { error } = UserSchema.validate(req.body, {
     context: { requestMethod: req.method },
   });
@@ -28,7 +30,15 @@ const registerUser = async (req, res, next) => {
       email,
       password: hashedPassword,
       avatarURL: gravatar.url(email, { d: "identicon" }),
+      verificationToken,
+      verified: false,
     });
+    const mail = {
+      to: email,
+      subject: "Please confirm you email",
+      html: `<a href="localhost:${process.env.PORT}/api/users/verify/${verificationToken}">Confirm your email</a>`,
+    };
+    sendMail(mail);
 
     res.status(201).json({
       user: {
@@ -59,6 +69,10 @@ const loginUser = async (req, res, next) => {
   const storedUser = await User.findOne({
     email,
   });
+
+  if (!storedUser.verify) {
+    throw new Unauthorized("Email is not verified");
+  }
 
   if (!storedUser) {
     throw new Unauthorized("Email or password is wrong(401)");
@@ -125,10 +139,80 @@ const updateAvatar = async (req, res) => {
   }
 };
 
+async function verifyEmail(req, res, next) {
+  const { verificationToken } = req.params;
+  console.log("++++++++++++++++++++");
+  const user = await User.findOne({
+    verificationToken: verificationToken,
+  });
+
+  if (!user) {
+    throw NotFound("User not found");
+  }
+
+  await User.findByIdAndUpdate(user._id, {
+    verify: true,
+    verificationToken: null,
+  });
+
+  return res.status(200).json({
+    message: "Verification successful",
+  });
+}
+
+async function repeatVerifyEmail(req, res, next) {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Missing required field email",
+    });
+  }
+
+  try {
+    const storedUser = await User.findOne({
+      email,
+    });
+
+    if (!storedUser) {
+      return res.status(400).json({
+        message: "User not found",
+      });
+    }
+
+    if (storedUser.verify) {
+      return res.status(400).json({
+        message: "Verification has already been passed",
+      });
+    }
+
+    const verificationToken = storedUser.verificationToken;
+
+    await sendMail({
+      to: email,
+      subject: "Please confirm your email again",
+      html: `<a href="localhost:${process.env.PORT}/api/users/verify/${verificationToken}">Confirm your email</a>`,
+    });
+
+    res.status(201).json({
+      user: {
+        email,
+        subscription: storedUser.subscription,
+        id: storedUser._id,
+        avatarURL: storedUser.avatarURL,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+}
+
 module.exports = {
   registerUser,
   loginUser,
   logoutUser,
   currentUser,
   updateAvatar,
+  verifyEmail,
+  repeatVerifyEmail,
 };
